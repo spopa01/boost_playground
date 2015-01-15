@@ -83,7 +83,7 @@ std::ostream& operator<<(std::ostream& os, basic_columns const& columns){
   return os;
 }
 
-std::ostream& operator<<(std::ostream& os, op const& o){
+std::ostream& operator<<(std::ostream& os, basic_op const& o){
   switch( o ){
     case op_eq: return os << "==";
     case op_neq: return os << "!=";
@@ -102,10 +102,11 @@ std::ostream& operator<<(std::ostream& os, basic_conditions const& conditions){
 }
 
 std::ostream& operator<<(std::ostream& os, basic_select const& select){
-  return os << "\nSELECT: " << select.columns_
-            << "\nFROM: " << select.table_
-            << (select.conditions_ ? ("\nWHERE: " + *select.conditions_) : "")
-            << "\n";
+  os  << "\nSELECT: " << select.columns_
+      << "\nFROM: " << select.table_;
+  if( select.conditions_ )
+    os  << "\nWHERE: " << *select.conditions_;
+  return os << "\n";
 }
 
 //parsing using synthesized attributes...
@@ -122,15 +123,15 @@ struct basic_select_grammar : qi::grammar<Iterator, basic_select(), ascii::space
       ("==", op_eq)
       ("!=", op_neq);
     op = no_case[op_token];
-    value = strlit | int_;
+    value = int_ | strlit;
 
-    condition = field >> op >> value;
+    condition = (field >> op >> value);
 
-    columns = no_case["select"] >> (ident % ',');
-    table = no_case["from"] >> ident;
-    conditions = -(no_case["where"] >> (condition % no_case["and"]));
-  
-    expression  = columns >> table >> conditions >> ';';
+    columns = (no_case["select"] >> (ident % ','));
+    table = (no_case["from"] >> ident);
+    conditions = (no_case["where"] >> (condition % no_case["and"]));
+
+    expression  = columns >> table >> -conditions >> ';';
   }
   
   //aux
@@ -148,7 +149,7 @@ struct basic_select_grammar : qi::grammar<Iterator, basic_select(), ascii::space
   //parts
   qi::rule<Iterator, basic_columns(), ascii::space_type> columns;
   qi::rule<Iterator, basic_table(), ascii::space_type> table;
-  qi::rule<Iterator, boost::optional<basic_conditions>(), ascii::space_type> conditions;
+  qi::rule<Iterator, basic_conditions(), ascii::space_type> conditions;
   
   //basic select
   qi::rule<Iterator, basic_select(), ascii::space_type> expression;
