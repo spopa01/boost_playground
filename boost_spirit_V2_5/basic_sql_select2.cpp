@@ -4,7 +4,9 @@
 
 #include <boost/spirit/include/qi.hpp>
 #include <boost/fusion/adapted.hpp>
+#include <boost/spirit/include/phoenix.hpp>
 #include <boost/optional.hpp>
+#include <boost/variant.hpp>
 
 #include <iostream>
 #include <string>
@@ -46,7 +48,9 @@ using basic_table = std::string;
 //condition(s)
 using basic_field = std::string;
 enum basic_op { op_eq, op_neq };
-using basic_value = boost::variant<int, std::string>;
+
+struct null{};
+using basic_value = boost::variant<null, int, std::string>;
 
 struct basic_condition{
   basic_field   field_;
@@ -83,6 +87,10 @@ std::ostream& operator<<(std::ostream& os, basic_columns const& columns){
   return os;
 }
 
+std::ostream& operator<<(std::ostream& os, null){
+  return os << "null";
+}
+
 std::ostream& operator<<(std::ostream& os, basic_op const& o){
   switch( o ){
     case op_eq: return os << "==";
@@ -112,52 +120,52 @@ std::ostream& operator<<(std::ostream& os, basic_select const& select){
 //parsing using synthesized attributes...
 template<typename Iterator>
 struct basic_select_grammar : qi::grammar<Iterator, basic_select(), ascii::space_type>{
-  basic_select_grammar() : basic_select_grammar::base_type(expression){
+  basic_select_grammar() : basic_select_grammar::base_type(expression_){
     using namespace qi;
  
-    ident = lexeme [ alpha >> *alnum ];   //columns, table
-    strlit = "'" >> *~char_("'") >> "'";  //string literal, like: 'string'
+    /* Note: you can use lexeme or remove the skipper from the rule in order to inhibit skipping WS */
 
-    field = ident;
+    ident_ = lexeme [ alpha >> *alnum ];   //columns, table
+    strlit_ = lexeme ["'" >> *~char_("'") >> "'"];  //string literal, like: 'string'
+    nulllit_ = no_case["null" >> attr(null())]; //
+
+    field_ = ident_;
     op_token.add
       ("==", op_eq)
       ("!=", op_neq);
-    op = no_case[op_token];
-    value = int_ | strlit;
+    op_ = no_case[op_token];
+    value_ = int_ | strlit_ | nulllit_;
 
-    condition = (field >> op >> value);
+    condition_ = (field_ >> op_ >> value_);
 
-    columns = (no_case["select"] >> (ident % ','));
-    table = (no_case["from"] >> ident);
-    conditions = (no_case["where"] >> (condition % no_case["and"]));
+    columns_ = (no_case["select"] >> (ident_ % ','));
+    table_ = (no_case["from"] >> ident_);
+    conditions_ = (no_case["where"] >> (condition_ % no_case["and"]));
 
-    expression  = columns >> table >> -conditions >> ';';
+    expression_  = columns_ >> table_ >> -conditions_ >> ';';
   }
   
   //aux
-  qi::rule<Iterator, std::string(), ascii::space_type> ident;
-  qi::rule<Iterator, std::string(), ascii::space_type> strlit;
+  qi::rule<Iterator, std::string(),     ascii::space_type> ident_;
+  qi::rule<Iterator, std::string(),     ascii::space_type> strlit_;
+  qi::rule<Iterator, null(),            ascii::space_type> nulllit_;
  
   //condition
-  qi::rule<Iterator, basic_field(), ascii::space_type> field;
+  qi::rule<Iterator, basic_field(),     ascii::space_type> field_;
   qi::symbols<char, basic_op> op_token;
-  qi::rule<Iterator, basic_op()> op;
-  qi::rule<Iterator, basic_value(), ascii::space_type> value;
+  qi::rule<Iterator, basic_op(),        ascii::space_type> op_;
+  qi::rule<Iterator, basic_value(),     ascii::space_type> value_;
 
-  qi::rule<Iterator, basic_condition(), ascii::space_type> condition;
+  qi::rule<Iterator, basic_condition(), ascii::space_type> condition_;
   
   //parts
-  qi::rule<Iterator, basic_columns(), ascii::space_type> columns;
-  qi::rule<Iterator, basic_table(), ascii::space_type> table;
-  qi::rule<Iterator, basic_conditions(), ascii::space_type> conditions;
+  qi::rule<Iterator, basic_columns(),   ascii::space_type> columns_;
+  qi::rule<Iterator, basic_table(),     ascii::space_type> table_;
+  qi::rule<Iterator, basic_conditions(),ascii::space_type> conditions_;
   
   //basic select
-  qi::rule<Iterator, basic_select(), ascii::space_type> expression;
+  qi::rule<Iterator, basic_select(),    ascii::space_type> expression_;
 };
-
-/*
-The WHERE part of the query is optional.
-*/
 
 //g++ file.cpp -std=c++11
 
